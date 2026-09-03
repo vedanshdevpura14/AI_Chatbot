@@ -116,7 +116,7 @@ def call_llm(prompt: str, system_instruction: str = "") -> str:
         from google import genai
         client = genai.Client()
         config = {"system_instruction": system_instruction} if system_instruction else None
-        return client.models.generate_content(model='gemini-2.5-flash', contents=prompt, config=config).text
+        return client.models.generate_content(model='gemini-1.5-flash', contents=prompt, config=config).text
         
     # Agar OpenAI ki key hai, toh ChatGPT API (gpt-4o-mini) use karo
     elif os.environ.get("OPENAI_API_KEY"):
@@ -173,7 +173,7 @@ def retrieve_rag(query: str) -> str:
         # Gemini API ka use kar rahe hain text ko numbers (embeddings) mein convert karne ke liye
         google_ef = embedding_functions.GoogleGenerativeAiEmbeddingFunction(
             api_key=api_key,
-            model_name="models/gemini-embedding-2"
+            model_name="models/text-embedding-004"
         )
         
         # Chroma DB connect karte hain aur query run karte hain (n_results=3 yani top 3 match)
