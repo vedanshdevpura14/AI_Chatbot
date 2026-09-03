@@ -265,6 +265,12 @@ def router_node(state: AgentState):
     # LLM se puchte hain ki answer kahan se lana hai: VectorDB(RAG), Internet(WEB), ya direct LLM knowledge(DIRECT)
     route_prompt = f"Decide the best source to answer the query: '{state['query']}'. Output exactly one word: 'RAG', 'WEB', or 'DIRECT'."
     route = call_llm(route_prompt).strip().upper()
+    
+    # Graceful error handling: If Ollama returns an error string, default to a safe route
+    if "ERROR" in route or route not in ["RAG", "WEB", "DIRECT"]:
+        print(f"Routing failed, defaulting to DIRECT. Reason: {route}")
+        route = "DIRECT"
+        
     return {"route": route}
 
 def rag_node(state: AgentState):
