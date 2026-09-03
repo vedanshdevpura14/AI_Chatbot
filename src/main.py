@@ -102,40 +102,39 @@ def get_chat_history(session_id: str, limit: int = 5) -> str:
 #  LLM Integration
 def call_llm(prompt: str, system_instruction: str = "") -> str:
     # Yeh function decide karta hai ki konsa LLM (Groq, Gemini, OpenAI, Ollama) use karna hai, environment variables ke hisaab se
-    
-    # Agar Groq ki API key hai, toh Groq use karo (bohot fast hai)
-    if os.environ.get("GROQ_API_KEY"):
-        from groq import Groq
-        client = Groq()
-        messages = [{"role": "system", "content": system_instruction}] if system_instruction else []
-        messages.append({"role": "user", "content": prompt})
-        return client.chat.completions.create(model="llama-3.1-8b-instant", messages=messages, temperature=0.2).choices[0].message.content
-        
-    # Agar Gemini ki key hai, toh Google Gemini API use karo
-    elif os.environ.get("GEMINI_API_KEY"):
-        from google import genai
-        client = genai.Client()
-        config = {"system_instruction": system_instruction} if system_instruction else None
-        return client.models.generate_content(model='gemini-1.5-flash', contents=prompt, config=config).text
-        
-    # Agar OpenAI ki key hai, toh ChatGPT API (gpt-4o-mini) use karo
-    elif os.environ.get("OPENAI_API_KEY"):
-        from openai import OpenAI
-        client = OpenAI()
-        messages = [{"role": "system", "content": system_instruction}] if system_instruction else []
-        messages.append({"role": "user", "content": prompt})
-        return client.chat.completions.create(model="gpt-4o-mini", messages=messages, temperature=0.2).choices[0].message.content
-        
-    # Agar koi API key nahi hai, toh local Ollama API call karo (offline mode)
-    else:
-        # Fallback to local Ollama
-        full_prompt = f"System: {system_instruction}\nUser: {prompt}" if system_instruction else prompt
-        try:
+    try:
+        # Agar Groq ki API key hai, toh Groq use karo (bohot fast hai)
+        if os.environ.get("GROQ_API_KEY"):
+            from groq import Groq
+            client = Groq()
+            messages = [{"role": "system", "content": system_instruction}] if system_instruction else []
+            messages.append({"role": "user", "content": prompt})
+            return client.chat.completions.create(model="llama-3.1-8b-instant", messages=messages, temperature=0.2).choices[0].message.content
+            
+        # Agar Gemini ki key hai, toh Google Gemini API use karo
+        elif os.environ.get("GEMINI_API_KEY"):
+            from google import genai
+            client = genai.Client()
+            config = {"system_instruction": system_instruction} if system_instruction else None
+            return client.models.generate_content(model='gemini-1.5-flash', contents=prompt, config=config).text
+            
+        # Agar OpenAI ki key hai, toh ChatGPT API (gpt-4o-mini) use karo
+        elif os.environ.get("OPENAI_API_KEY"):
+            from openai import OpenAI
+            client = OpenAI()
+            messages = [{"role": "system", "content": system_instruction}] if system_instruction else []
+            messages.append({"role": "user", "content": prompt})
+            return client.chat.completions.create(model="gpt-4o-mini", messages=messages, temperature=0.2).choices[0].message.content
+            
+        # Agar koi API key nahi hai, toh local Ollama API call karo (offline mode)
+        else:
+            # Fallback to local Ollama
+            full_prompt = f"System: {system_instruction}\nUser: {prompt}" if system_instruction else prompt
             res = requests.post("http://localhost:11434/api/generate", json={"model": "llama3.2", "prompt": full_prompt, "stream": False}, timeout=120)
             res.raise_for_status()
             return res.json()["response"]
-        except Exception as e:
-            return f"Error calling Ollama: {e}"
+    except Exception as e:
+        return f"LLM API Error: {e}"
 
 #  Tools
 def web_search(query: str) -> str:
@@ -263,7 +262,14 @@ class AgentState(TypedDict):
 
 def router_node(state: AgentState):
     # LLM se puchte hain ki answer kahan se lana hai: VectorDB(RAG), Internet(WEB), ya direct LLM knowledge(DIRECT)
-    route_prompt = f"Decide the best source to answer the query: '{state['query']}'. Output exactly one word: 'RAG', 'WEB', or 'DIRECT'."
+    route_prompt = f"""Decide the best source to answer the user query.
+Rules:
+- If the query asks for real-time information, current events, news, or current office holders, output 'WEB'.
+- If the query asks about the user's past conversations or personal details, output 'RAG'.
+- For general knowledge or simple conversation, output 'DIRECT'.
+
+Query: '{state['query']}'
+Output exactly one word: 'RAG', 'WEB', or 'DIRECT'."""
     route = call_llm(route_prompt).strip().upper()
     
     # Graceful error handling: If Ollama returns an error string, default to a safe route
@@ -291,7 +297,7 @@ def generate_node(state: AgentState):
     
     # Final prompt ban raha hai LLM ke liye
     prompt = f"User Memory:\n{memory}\n\nRecent History:\n{history}\n\nContext:\n{state.get('context', 'None')}\n\nUser Query: {state['query']}"
-    response = call_llm(prompt, "You are a helpful assistant. Use the context and memory to answer the question.")
+    response = call_llm(prompt, "You are a helpful assistant. Answer the user's question directly using the provided Context and User Memory. Do not mention your internal knowledge cutoff date.")
     
     # Final response ko database mein save karte hain aur Memory/Graph mein update trigger karte hain
     save_chat_message(state['session_id'], state['user_id'], "assistant", response)
